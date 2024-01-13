@@ -1,0 +1,16 @@
+# Specify filepatterns you want git to ignore.
+*.pyc
+*.d
+*.so
+*.pcm
+__pycache__
+build
+*.egg-info
+dist
+experimental/
+.vscode/
+examples/*.root
+bin/
+root*
+.pytest_cache/
+TIMBER/data/Pileup/old/

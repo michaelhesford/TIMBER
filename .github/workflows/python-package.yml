@@ -1,0 +1,52 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Python package
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        python-version: [2.7,3.6] #3.6.9,
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Hack to get setup-python to work on act
+      run: |
+        if [ ! -f "/etc/lsb-release" ] ; then
+          echo "DISTRIB_RELEASE=18.04" > /etc/lsb-release
+        fi
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Setup environment
+      run: |
+        sudo apt-get install graphviz libgraphviz-dev libboost-all-dev
+        echo "---------DEBUG---------"
+        ls /usr/lib/x86_64-linux-gnu/ | grep 'libclang'
+        echo "-------END DEBUG-------"
+        sudo ln -s /usr/lib/x86_64-linux-gnu/libclang-9.so.1 /usr/lib/x86_64-linux-gnu/libclang.so
+        python -m pip install --upgrade pip==20.3
+        pip install virtualenv
+        python -m virtualenv timber-env
+        source timber-env/bin/activate
+        python -m pip install pytest gdown
+        gdown https://drive.google.com/uc?id=11dXffndcD3OkHqJ3x2iaVZj5C8HVLeg_ -O root_v6-22-00_build.tgz
+        tar -xzf root_v6-22-00_build.tgz
+    - name: Pytest
+      run: |
+        source root_v6.22.00.build/bin/thisroot.sh
+        source timber-env/bin/activate
+        python -m pip install --upgrade pip
+        source setup.sh
+        export TIMBERPATH=$TIMBERPATH
+        pytest test/
