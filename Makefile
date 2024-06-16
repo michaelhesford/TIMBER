@@ -6,7 +6,7 @@ FMT_DIR=bin/fmt/include/
 
 CC=gcc
 INCLUDE=-I/usr/include/ -I bin/ -I./ `root-config --cflags --ldflags --glibs` -I/usr/include/ -I$(EXT_DIR) -I$(FMT_DIR)
-LIBS=-lstdc++ -l boost_wserialization -l boost_filesystem -L bin/libarchive/lib/ -Wl,-rpath=bin/libarchive/lib/ -l archive
+LIBS=-lstdc++ -l boost_wserialization -l boost_filesystem -L bin/libarchive/lib/ -Wl,-rpath=bin/libarchive/lib/ -l archive -L /cvmfs/cms.cern.ch/el8_amd64_gcc11/external/py3-correctionlib/2.2.2-cb60c4327c0522c2e7ee31963c98a46f/lib/python3.9/site-packages/correctionlib/lib/ -l correctionlib -Wl,-rpath,/cvmfs/cms.cern.ch/el8_amd64_gcc11/external/py3-correctionlib/2.2.2-cb60c4327c0522c2e7ee31963c98a46f/lib/python3.9/site-packages/correctionlib/lib/
 CFLAGS=-g -Wno-attributes -fPIC -c
 CVMFS=/cvmfs/cms.cern.ch/$(SCRAM_ARCH)/cms/cmssw/$(CMSSW_VERSION)
 CMSSW=-I$(CVMFS)/src -I/cvmfs/cms.cern.ch/$(SCRAM_ARCH)/external/boost/1.78.0-0d68c45b1e2660f9d21f29f6d0dbe0a0/include -L/cvmfs/cms.cern.ch/$(SCRAM_ARCH)/external/boost/1.78.0-0d68c45b1e2660f9d21f29f6d0dbe0a0/lib -L$(CVMFS)/lib/$(SCRAM_ARCH)
