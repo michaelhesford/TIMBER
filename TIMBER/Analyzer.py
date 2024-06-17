@@ -5,7 +5,7 @@ Home of main classes for TIMBER.
 """
 
 from TIMBER.CollectionOrganizer import CollectionOrganizer
-from TIMBER.Tools.Common import GenerateHash, GetHistBinningTuple, CompileCpp, ConcatCols, GetStandardFlags, ExecuteCmd, LoadColumnNames
+from TIMBER.Tools.Common import GenerateHash, GetHistBinningTuple, CompileCpp, ConcatCols, GetStandardFlags, ExecuteCmd, LoadColumnNames, ProgressBar
 from clang import cindex
 from collections import OrderedDict
 
@@ -30,7 +30,7 @@ class analyzer(object):
 
     When using class functions to perform actions, an active node will always be tracked so that the next action uses 
     the active node and assigns the output node as the new #ActiveNode"""
-    def __init__(self,fileName,eventsTreeName="Events",runTreeName="Runs",multiSampleStr=''):
+    def __init__(self,fileName,eventsTreeName="Events",runTreeName="Runs",multiSampleStr='',skipEmpty=True):
         """Constructor.
         
         Sets up the tracking of actions on an RDataFrame as nodes. Also
@@ -46,6 +46,9 @@ class analyzer(object):
         @param multiSampleStr (str, optional): If a sample was generated with multiple mass points,
                 define the mass which you'd like to analyze in this string. If you're unsure of your options, check the Runs TTree
                 for a branch `genEventSumw_YMass_<mass>`. Defaults to '' which will load `genEventSumw_`.
+    @param skipEmpty (bool): If the ROOT file(s) opened for processing by the analyzer have an empty Events TTree, then skip them.
+        By default, this is set to True, and a warning will be issued to the user if they do not wish to skip files with empty
+        Events trees. 
         """
 
         ## @var fileName
@@ -97,6 +100,7 @@ class analyzer(object):
         self._eventsTreeName = eventsTreeName
         self._runTreeName = runTreeName
         self.silent = False
+        self.skipEmpty = skipEmpty
         if multiSampleStr != '':
             multiSampleStr = 'YMass_%s'%multiSampleStr
         genEventSumw_str = 'genEventSumw_'+multiSampleStr
@@ -105,13 +109,18 @@ class analyzer(object):
         # Setup TChains for multiple or single file
         self._eventsChain = ROOT.TChain(self._eventsTreeName) 
         self.RunChain = ROOT.TChain(runTreeName) 
-        print ('Opening files...')
-        if isinstance(self.fileName,list):
-            for f in self.fileName:
+        if isinstance(self.fileName,list):	# assumes list of line-separated .root files
+            for f in ProgressBar(self.fileName, "Opening files: "):
                 self._addFile(f)
         else:
-            self._addFile(self.fileName)
-        
+            if not self.fileName.endswith(".txt"):
+                print("Opening file...")
+                self._addFile(self.fileName)
+            else:	# opening .txt file containing line-separated .root filenames
+                fNames = self._parseTxt(self.fileName)
+                for f in ProgressBar(fNames, "Opening files: "):
+                    self._addFile(f)
+
         # Make base RDataFrame
         BaseDataFrame = ROOT.RDataFrame(self._eventsChain) 
         self.BaseNode = Node('base',BaseDataFrame) 
@@ -124,7 +133,7 @@ class analyzer(object):
             self.isData = False
         else:
             self.isData = True
-
+ 
         # Count number of generated events if not data
         self.genEventSumw = 0.0
         self.genEventCount = 0
@@ -167,10 +176,17 @@ class analyzer(object):
         if 'CMSSW_BASE' not in os.environ.keys():
             skipHeaders = ['JME_common.h','JetSmearer.h','JetRecalibrator.h','JES_weight.h','JER_weight.h','JMS_weight.h','JMR_weight.h']
 
-
         for f in glob.glob(os.environ["TIMBERPATH"]+'TIMBER/Framework/include/*.h'):
             if f.split('/')[-1] in skipHeaders: continue
             CompileCpp('#include "%s"\n'%f)
+
+    def _parseTxt(self,f):
+        '''
+        Parse .txt file and return list of all lines in it
+        @param f (str): .txt filename
+        '''
+        txt_file = open(f,"r")
+        return [l.strip() for l in txt_file.readlines()] 
 
     def _addFile(self,f):
         '''Add file to TChains being tracked.
@@ -181,12 +197,27 @@ class analyzer(object):
         if f.endswith(".root"): 
             if 'root://' not in f and f.startswith('/store/'):
                 f='root://cms-xrd-global.cern.ch/'+f
-            self._eventsChain.Add(f)
+            #self._eventsChain.Add(f)
             if ROOT.TFile.Open(f,'READ') == None:
-                raise ReferenceError('File %s does not exist'%f)
+                raise ReferenceError('File %s does not exist'%f)	    
             tempF = ROOT.TFile.Open(f,'READ')
-            if tempF.Get(self._runTreeName) != None:
-                self.RunChain.Add(f)
+        # Check if Events tree name is in the file
+        existingTrees = tempF.GetListOfKeys()
+        treeNames = [i.GetName() for i in existingTrees]
+        if self._eventsTreeName not in treeNames:
+            print('WARNING: The following file does NOT contain an Events TTree, skipping.\n\tFile: {}'.format(f))
+            pass
+        elif tempF.Get(self._eventsTreeName).GetEntry(0) != 0:
+            self._eventsChain.Add(f)
+        elif tempF.Get(self._eventsTreeName).GetEntry(0) == 0:
+            if self.skipEmpty:
+                print("WARNING: The following file contains an empty Events TTree, skipping. If you wish to add regardless, please call the analyzer with 'skipEmpty=False'\n\tFile: {}".format(f))
+                pass
+        else:
+            print("WARNING: The following file contains an empty Events TTree, adding to analyzer regardless. If you wish to skip, please call analyzer with 'skipEmpty=True' (default).\n\tFile: {}".format(f))
+            self._eventsChain.Add(f)
+        if tempF.Get(self._runTreeName) != None:
+            self.RunChain.Add(f)
             tempF.Close()
         elif f.endswith(".txt"): 
             txt_file = open(f,"r")
@@ -389,8 +420,6 @@ class analyzer(object):
         out = []
         for i in columns:
             if i in cols_in_node: out.append(i)
-            else: print ("WARNING: Column %s not found and will be dropped."%i)
-
         return out
 
     def GetTriggerString(self,trigList):
@@ -633,7 +662,7 @@ class analyzer(object):
         '''
         return self.SubCollection(name, basecoll, newOrderCol, skip)
 
-    def ObjectFromCollection(self,name,basecoll,index,skip=[]):
+    def ObjectFromCollection(self,name,basecoll,index,skip=[],strict=True):
         '''Similar to creating a SubCollection except the newly defined columns
         are single values (not vectors/arrays) for the object at the provided index.
         
@@ -641,6 +670,10 @@ class analyzer(object):
         @param basecoll (str): Name of derivative collection.
         @param index (str): Index of the collection item to extract.
         @param skip ([str]): List of variable names in the collection to skip.
+        @param strict (bool): Whether or not to require strict definitions. I.e., if
+            trying to derive a new collection from "Jet" base collection, then strict
+            definitions would ensure only the "Jet" collections are renamed, not any
+            column including the word "Jet".
 
         Returns:
             None. New nodes created with the sub collection.
@@ -648,7 +681,10 @@ class analyzer(object):
         Example:
             ObjectFromCollection('LeadJet','FatJet','0')
         '''
-        collBranches = [str(cname) for cname in self.DataFrame.GetColumnNames() if ( (basecoll in str(cname)) and (str(cname) not in skip))]
+        if not strict:
+            collBranches = [str(cname) for cname in self.DataFrame.GetColumnNames() if ( (basecoll in str(cname)) and (str(cname) not in skip))]
+        else:
+            collBranches = [str(cname) for cname in self.DataFrame.GetColumnNames() if ( (basecoll == str(cname)[:len(basecoll)]) and (str(cname) not in skip))]
         for b in collBranches:
             replacementName = b.replace(basecoll,name)
             if b == 'n'+basecoll:
@@ -1910,7 +1946,7 @@ class ModuleWorker(object):
     Writing the C++ modules requires the desired branch/column names must be specified or be used as the argument variable names
     to allow the framework to automatically determine what branch/column to use in GetCall().
     '''
-    def __init__(self,name,script,constructor=[],mainFunc='eval',columnList=None,isClone=False,cloneFuncInfo=None,isNewConstr=False):
+    def __init__(self,name,script,constructor=[],mainFunc='eval',columnList=None,isClone=False,cloneFuncInfo=None):
         '''Constructor
 
         @param name (str): Unique name to identify the instantiated worker object.
@@ -1932,7 +1968,8 @@ class ModuleWorker(object):
         # Correction name
         self.name = name
         self._script = self._getScript(script)
-        self._funcInfo = self._getFuncInfo(mainFunc)
+        if not isClone: self._funcInfo = self._getFuncInfo(mainFunc)
+        else: self._funcInfo = cloneFuncInfo
         self._mainFunc = list(self._funcInfo.keys())[0]
         self._columnNames = LoadColumnNames() if columnList == None else columnList
         self._constructor = constructor 
@@ -1948,9 +1985,6 @@ class ModuleWorker(object):
                 CompileCpp(self._script)
 
             self._instantiate(constructor)
-
-        if isNewConstr:
-            self._instantiate(constructor)            
 
     def Clone(self,name,newMainFunc=None):
         '''Makes a clone of current instance.
@@ -2207,7 +2241,7 @@ class Correction(ModuleWorker):
     (2) the return must be a vector ordered as {nominal, up, down} for "weight" type and 
     {up, down} for "uncert" type.
     '''
-    def __init__(self,name,script='',constructor=[],mainFunc='eval',corrtype=None,columnList=None,isClone=False,cloneFuncInfo=None,isNewConstr=False):
+    def __init__(self,name,script='',constructor=[],mainFunc='eval',corrtype=None,columnList=None,isClone=False,cloneFuncInfo=None):
         '''Constructor
 
         @param name (str): Correction name.
@@ -2234,7 +2268,7 @@ class Correction(ModuleWorker):
         # str
         # Name of correction 
         if script != '':
-            super(Correction,self).__init__(name,script,constructor,mainFunc,columnList,isClone,cloneFuncInfo,isNewConstr)
+            super(Correction,self).__init__(name,script,constructor,mainFunc,columnList,isClone,cloneFuncInfo)
             self.existing = False
         else:
             self.existing = True
