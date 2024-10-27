@@ -1,10 +1,26 @@
 #include "../include/MuonID_weight.h"
 
 // Constructor - specify file path and working point (ID) being used
-MuonID_weight::MuonID_weight(std::string correctionname, std::string filepath):_correctionname(correctionname),_filepath(filepath) {}
+MuonID_weight::MuonID_weight(std::string correctionname, std::string filepath):_correctionname(correctionname),_filepath(filepath) {
+    _eta_bounds[0] = 0;
+    _eta_bounds[1] = 2.4;
+    _pt_bounds[0] = 50; 
+    if (_filepath.find("IDISO") != std::string::npos) {
+        _pt_bounds[1] = 1000;
+    }
+    else if (_filepath.find("RECO") != std::string::npos){
+        _pt_bounds[1] = 3500;
+    }
+}
 
 // Destructor
 MuonID_weight::~MuonID_weight() {}
+
+bool MuonID_weight::inRange(float bounds[2], float x) {
+    float low = bounds[0];
+    float high = bounds[1];
+    return (low <= x && x <= high);
+}
 
 RVec<float> MuonID_weight::eval(float Lepton_eta, float Lepton_pt, int LeptonType) {
     // prepares vector of weights to return
@@ -16,6 +32,12 @@ RVec<float> MuonID_weight::eval(float Lepton_eta, float Lepton_pt, int LeptonTyp
         sf = 1;
         sfup = 1;
         sfdown = 1;
+    }
+
+    else if (!inRange(_eta_bounds, Lepton_eta) || !inRange(_pt_bounds, Lepton_pt)) {
+	sf = 1;
+	sfup = 1;
+	sfdown = 1;
     }
 
     // grab proper sf

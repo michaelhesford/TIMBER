@@ -7,8 +7,9 @@
 #include <string>
 #include <algorithm>
 #include <math.h>
+#include <cmath>
 #include "common.h"
-#include "/cvmfs/cms.cern.ch/el8_amd64_gcc11/external/py3-correctionlib/2.2.2-cb60c4327c0522c2e7ee31963c98a46f/lib/python3.9/site-packages/correctionlib/include/correction.h"
+#include "/cvmfs/cms.cern.ch/el8_amd64_gcc10/external/py3-correctionlib/2.1.0-18f6d1dfcf4c205c38d543f9ef2a014b/lib/python3.9/site-packages/correctionlib/include/correction.h"
 
 /*
 C++ class to handle the application of scale factors for the electron ID.
@@ -24,12 +25,16 @@ class ElectronID_weight {
         std::string _filepath;       // path to file with SF's
         float GetScaleFactor(std::string variation, float eta, float pt, int type); // retreive SF using correctionlib
         int _leptonType; // 0: electron, 1: muon (must only apply SF to events where lepton is an electron)
+	float _pt_bounds[2];
+	float _eta_bounds[2];
 
     public:
         ElectronID_weight(std::string year, std::string wp, std::string filepath); 
         ~ElectronID_weight();
 
-        // Return a vector of weights for each event: {nom,up,down}
+	bool inRange(float bounds[2], float x);
+
+	// Return a vector of weights for each event: {nom,up,down}
         RVec<float> eval(float Lepton_eta, float Lepton_pt, int LeptonType);
 };
 
