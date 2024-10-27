@@ -16,7 +16,7 @@ pp = pprint.PrettyPrinter(indent=4)
 # For parsing c++ modules
 libs = subprocess.Popen('$ROOTSYS/bin/root-config --libs',shell=True, stdout=subprocess.PIPE, universal_newlines=True).communicate()[0].strip()
 rootpath = subprocess.Popen('echo $ROOTSYS',shell=True, stdout=subprocess.PIPE, universal_newlines=True).communicate()[0].strip()
-cpp_args =  '-x c++ -c --std=c++11 -I %s/include %s -lstdc++ -l correctionlib -Wl,-rpath,/cvmfs/cms.cern.ch/el8_amd64_gcc11/external/py3-correctionlib/2.2.2-cb60c4327c0522c2e7ee31963c98a46f/lib/python3.9/site-packages/correctionlib/lib/'%(rootpath,libs)
+cpp_args =  '-x c++ -c --std=c++11 -I %s/include %s -lstdc++ -l correctionlib -Wl,-rpath,/cvmfs/cms.cern.ch/el8_amd64_gcc10/external/py3-correctionlib/2.1.0-18f6d1dfcf4c205c38d543f9ef2a014b/lib/python3.9/site-packages/correctionlib/lib'%(rootpath,libs)
 cpp_args = cpp_args.split(' ')
 
 TIMBERPATH = os.environ["TIMBERPATH"]
@@ -1938,15 +1938,15 @@ class HistGroup(Group):
 # Module handling classes #
 ###########################
 class ModuleWorker(object):
-    '''Class to handle C++ class modules generically. 
+    '''Class to handle C++ class modules generically.
 
-    Uses clang in python to parse the C++ code and determine function names, 
-    namespaces, and argument names and types. 
+    Uses clang in python to parse the C++ code and determine function names,
+    namespaces, and argument names and types.
 
     Writing the C++ modules requires the desired branch/column names must be specified or be used as the argument variable names
     to allow the framework to automatically determine what branch/column to use in GetCall().
     '''
-    def __init__(self,name,script,constructor=[],mainFunc='eval',columnList=None,isClone=False,cloneFuncInfo=None):
+    def __init__(self,name,script,constructor=[],mainFunc='eval',columnList=None,isClone=False,cloneFuncInfo=None,isNewConstr=False):
         '''Constructor
 
         @param name (str): Unique name to identify the instantiated worker object.
@@ -1968,11 +1968,10 @@ class ModuleWorker(object):
         # Correction name
         self.name = name
         self._script = self._getScript(script)
-        if not isClone: self._funcInfo = self._getFuncInfo(mainFunc)
-        else: self._funcInfo = cloneFuncInfo
+        self._funcInfo = self._getFuncInfo(mainFunc)
         self._mainFunc = list(self._funcInfo.keys())[0]
         self._columnNames = LoadColumnNames() if columnList == None else columnList
-        self._constructor = constructor 
+        self._constructor = constructor
         self._objectName = self.name
         self._call = None
 
@@ -1984,6 +1983,9 @@ class ModuleWorker(object):
             else:
                 CompileCpp(self._script)
 
+            self._instantiate(constructor)
+
+        if isNewConstr:
             self._instantiate(constructor)
 
     def Clone(self,name,newMainFunc=None):
@@ -2021,7 +2023,7 @@ class ModuleWorker(object):
             outname = TIMBERPATH+script
         else: # non-TIMBER module
             outname = script
-        
+
         if not os.path.isfile(outname):
             raise NameError('File %s does not exist'%outname)
         return outname
@@ -2086,7 +2088,7 @@ class ModuleWorker(object):
                                         default_val = ''.join([tok.spelling for tok in list(translation_unit.get_tokens(extent=list(arg.walk_preorder())[-1].extent))])
                                         funcs[methodname][arg.spelling] = default_val
                                     else:
-                                        funcs[methodname][arg.spelling] = None  
+                                        funcs[methodname][arg.spelling] = None
 
         if len(list(funcs.keys())) == 0:
             if ('TIMBER/Framework/src' in self._script):
@@ -2158,22 +2160,22 @@ class ModuleWorker(object):
         elif isinstance(toCheck, list): cols_to_check = toCheck
         elif toCheck == None: cols_to_check = LoadColumnNames()
         else: raise TypeError('Input argument `toCheck` is not of type Node, RDataFrame, list, or None.')
-            
+
         # Loop over function arguments
         for a in self._funcInfo[self._mainFunc].keys():
             default_value = self._funcInfo[self._mainFunc][a]
             skip_existence_check = False
             # if default argument exists
-            if default_value != None:  
+            if default_value != None:
                 # replace with new option
-                if a in inArgs.keys(): 
+                if a in inArgs.keys():
                     arg_to_add = inArgs[a]
                 # use default value
-                else: 
+                else:
                     arg_to_add = default_value
                     skip_existence_check = True
             # if no default arg
-            else: 
+            else:
                 # use input
                 if a in inArgs.keys():
                     arg_to_add = inArgs[a]
@@ -2230,18 +2232,18 @@ class ModuleWorker(object):
 class Correction(ModuleWorker):
     '''Class to handle corrections produced by C++ modules.
 
-    Uses clang in python to parse the C++ code and determine function names, 
-    namespaces, and argument names and types. 
+    Uses clang in python to parse the C++ code and determine function names,
+    namespaces, and argument names and types.
 
     Writing the C++ modules has two requirements:
 
     (1) the desired branch/column names must be specified or be used as the argument variable names
     to allow the framework to automatically determine what branch/column to use in GetCall(),
 
-    (2) the return must be a vector ordered as {nominal, up, down} for "weight" type and 
+    (2) the return must be a vector ordered as {nominal, up, down} for "weight" type and
     {up, down} for "uncert" type.
     '''
-    def __init__(self,name,script='',constructor=[],mainFunc='eval',corrtype=None,columnList=None,isClone=False,cloneFuncInfo=None):
+    def __init__(self,name,script='',constructor=[],mainFunc='eval',corrtype=None,columnList=None,isClone=False,cloneFuncInfo=None,isNewConstr=False):
         '''Constructor
 
         @param name (str): Correction name.
@@ -2251,7 +2253,7 @@ class Correction(ModuleWorker):
         @param mainFunc (str, optional): Name of the function to use inside script. Defaults to None
                 and the class will try to deduce it.
         @param corrtype (str, optional): Either "weight" (nominal weight to apply with an uncertainty), "corr"
-                (only a correction), or 
+                (only a correction), or
                 "uncert" (only an uncertainty). Defaults to '' and the class will try to
                 deduce it.
         @param columnList ([str], optional): List of column names to search mainFunc arguments against.
@@ -2266,9 +2268,9 @@ class Correction(ModuleWorker):
         # Denotes if associated c++ has already been compiled
         ## @var name
         # str
-        # Name of correction 
+        # Name of correction
         if script != '':
-            super(Correction,self).__init__(name,script,constructor,mainFunc,columnList,isClone,cloneFuncInfo)
+            super(Correction,self).__init__(name,script,constructor,mainFunc,columnList,isClone,cloneFuncInfo,isNewConstr)
             self.existing = False
         else:
             self.existing = True
@@ -2284,7 +2286,7 @@ class Correction(ModuleWorker):
         @param name (str): Clone name.
         @param newMainFunc (str, optional): Name of the function to use inside script. Defaults to None and the original is used.
         @param newType (str, optional): New type for the cloned correction. Defaults to None and the original is used.
-        
+
         Returns:
             Correction: Clone of instance with same script but different function (newMainFunc).
         '''
@@ -2336,15 +2338,15 @@ class Correction(ModuleWorker):
 class Calibration(Correction):
     '''Class to handle calibrations produced by C++ modules.
 
-    Uses clang in python to parse the C++ code and determine function names, 
-    namespaces, and argument names and types. 
+    Uses clang in python to parse the C++ code and determine function names,
+    namespaces, and argument names and types.
 
     Writing the C++ modules has two requirements:
 
     (1) the desired branch/column names must be specified or be used as the argument variable names
     to allow the framework to automatically determine what branch/column to use in GetCall(),
 
-    (2) the return must be a vector ordered as {nominal, up, down} for "weight" type and 
+    (2) the return must be a vector ordered as {nominal, up, down} for "weight" type and
     {up, down} for "uncert" type.
     '''
     def __init__(self,name,script,constructor=[],mainFunc='eval',corrtype=None,columnList=None,isClone=False):
@@ -2356,7 +2358,7 @@ class Calibration(Correction):
         @param mainFunc (str, optional): Name of the function to use inside script. Defaults to None
                 and the class will try to deduce it.
         @param corrtype (str, optional): Either "weight" (nominal weight to apply with an uncertainty), "corr"
-                (only a correction), or 
+                (only a correction), or
                 "uncert" (only an uncertainty). Defaults to '' and the class will try to
                 deduce it.
         @param columnList ([str], optional): List of column names to search mainFunc arguments against.
