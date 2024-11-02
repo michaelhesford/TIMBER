@@ -875,7 +875,7 @@ class analyzer(object):
 
         return correctionsToApply
 
-    def MakeWeightCols(self,name='',node=None,correctionNames=None,dropList=[],correlations=[],extraNominal=''):
+    def MakeWeightCols(self,name='',node=None,correctionNames=None,dropList=[],correlations=[],uncerts_to_corr={},extraNominal=''):
         '''Makes columns/variables to store total weights based on the Corrections that have been added.
 
         This function automates the calculation of the columns that store the nominal weight and the 
@@ -898,6 +898,9 @@ class analyzer(object):
                 are dropped from consideration.
         @param correlations list(tuple of strings): List of tuples of correlations to create. Ex. If you have syst1, syst2, syst3 corrections and you want
                 to correlate syst1 and syst2, provide [("syst1","syst2")]. To anti-correlate, add a "!" infront of the correction name. Ex. [("syst1","!syst2")]
+        @param uncerts_to_corr (dict): Dictionary of corrections (systematic of type "corr") whose values are a list of uncertanties (type "uncert") to be 
+                attributed to a given correction (i.e. {corr1:[uncert1,uncert2,...],...}). When the weight columns are calculated, the correction will not be
+                applied to columns corresponding to the up/down variations of the associated uncertainties.
         @param extraNominal (str): String to prepend to all weight calculations. Will be multiplied by the rest of the pieces
                 put together automatically. Defaults to ''.
 
@@ -956,7 +959,12 @@ class analyzer(object):
                     else:
                         weights[corrname+'_up'] += ' * '+correctionName+'__up'
                         weights[corrname+'_down'] += ' * '+correctionName+'__down'
-
+                    
+                    for correction in uncerts_to_corr:
+                        if corrname in uncerts_to_corr[correction]: #remove nominal correction from up/down uncert columns
+                            weights[corrname+'_up'] = weights[corrname+'_up'].replace(correction+'__nom * ','')
+                            weights[corrname+'_down'] = weights[corrname+'_down'].replace(correction+'__nom * ','')
+                    
                 elif corr.GetType() == 'corr':
                     continue
             
